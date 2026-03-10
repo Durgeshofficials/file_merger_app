@@ -1,0 +1,570 @@
+{% extends "base.html" %}
+{% set step = 4 %}
+{% block title %}Step 4 — Preview & Download{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Make body NOT scroll on this page — the PDF iframe scrolls instead ── */
+html, body { overflow: hidden; height: 100%; }
+
+/* ── Full-viewport shell ─────────────────────────────────────────────────── */
+.preview-shell {
+  display: grid;
+  grid-template-columns: 1fr 288px;
+  grid-template-rows: 52px 1fr;   /* topbar row + viewer row */
+  height: calc(100vh - 58px);     /* 58px = header height */
+  gap: 0;
+  background: var(--bg);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.pv-topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: 0 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.pv-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--white);
+  white-space: nowrap;
+}
+.pv-meta {
+  font-size: .7rem;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pv-actions { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+
+/* ── Viewer area (left) ──────────────────────────────────────────────────── */
+.pv-viewer {
+  position: relative;
+  overflow: hidden;
+  background: #2d2d2d;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tab bar inside viewer */
+.pv-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.pvtab {
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: .3rem .85rem;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.pvtab.active { background: var(--accent); color: #fff; }
+.pvtab:not(.active):hover { background: var(--surface2); color: var(--text); }
+
+/* The panel that fills all remaining height */
+.pv-panel {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Merged PDF iframe — fills 100% of panel ────────────────────────────── */
+#paneMerged {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+#pdfSpinner {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  background: #2d2d2d;
+  transition: opacity .35s;
+  pointer-events: none;
+}
+#pdfSpinner.hidden { opacity: 0; pointer-events: none; }
+.spin-ring {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(108,99,255,.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-label {
+  font-size: .72rem; font-family: var(--font-mono);
+  color: rgba(255,255,255,.4); letter-spacing: .1em; text-transform: uppercase;
+}
+#pdfIframe {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.pdf-fallback {
+  display: none;
+  background: rgba(255,101,132,.08);
+  border: 1px solid rgba(255,101,132,.25);
+  border-radius: var(--r);
+  padding: 1.25rem;
+  text-align: center;
+  font-size: .85rem;
+  color: #ff8fa3;
+  margin: 1rem;
+}
+.pdf-fallback a { color: var(--accent); }
+
+/* ── Individual files grid ──────────────────────────────────────────────── */
+#paneFiles {
+  display: none;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1rem;
+}
+#paneFiles::-webkit-scrollbar { width: 5px; }
+#paneFiles::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: .85rem;
+}
+.file-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.file-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.file-card-thumb {
+  width: 100%;
+  aspect-ratio: 3/4;
+  background: var(--surface2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.file-card-thumb > img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.file-card-thumb > .pdf-mini-wrap {
+  width: 100%; height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.file-card-thumb > .pdf-mini-wrap iframe {
+  position: absolute;
+  top: 0; left: 0;
+  width: 200%; height: 200%;
+  border: none;
+  transform: scale(0.5);
+  transform-origin: top left;
+  pointer-events: none;
+}
+.file-card-label {
+  padding: .45rem .6rem;
+  border-top: 1px solid var(--border);
+}
+.fc-num {
+  font-size: .58rem; font-family: var(--font-mono); font-weight: 700;
+  color: var(--accent); letter-spacing: .06em; text-transform: uppercase;
+}
+.fc-name {
+  font-size: .71rem; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+/* ── Sidebar (right) ─────────────────────────────────────────────────────── */
+.pv-sidebar {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-inner {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+.sidebar-inner::-webkit-scrollbar { width: 4px; }
+.sidebar-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.success-pill {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: rgba(74,222,128,.12);
+  border: 1px solid rgba(74,222,128,.3);
+  color: var(--green);
+  font-size: .7rem; font-family: var(--font-mono); font-weight: 600;
+  padding: .25rem .75rem; border-radius: 20px;
+}
+.stat-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+}
+.stat-box {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: .6rem; text-align: center;
+}
+.stat-box .sv { font-size: 1.4rem; font-weight: 700; font-family: var(--font-serif); color: var(--white); display: block; line-height: 1; }
+.stat-box .sl { font-size: .6rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+
+/* Clickable file list */
+.file-list { display: flex; flex-direction: column; gap: .3rem; }
+.fl-row {
+  display: flex; align-items: center; gap: .55rem;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: .4rem .65rem;
+  cursor: pointer; transition: border-color .15s;
+}
+.fl-row:hover { border-color: var(--accent); }
+.fl-num {
+  width: 18px; height: 18px; background: var(--accent); color: #fff;
+  border-radius: 3px; display: flex; align-items: center; justify-content: center;
+  font-size: .58rem; font-weight: 700; font-family: var(--font-mono); flex-shrink: 0;
+}
+.fl-name {
+  flex: 1; min-width: 0; font-size: .72rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fl-type {
+  font-size: .58rem; font-family: var(--font-mono); padding: .12rem .38rem;
+  border-radius: 3px; flex-shrink: 0;
+}
+.type-img { background: rgba(74,222,128,.15); color: #4ade80; }
+.type-pdf { background: rgba(255,101,132,.15); color: #ff6584; }
+.fl-eye { font-size: .7rem; color: var(--muted); flex-shrink: 0; }
+
+.sidebar-footer {
+  padding: .85rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: .5rem;
+  flex-shrink: 0;
+}
+
+/* ── Lightbox ────────────────────────────────────────────────────────────── */
+.lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.92);
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 1rem 1.25rem;
+  gap: .85rem;
+}
+.lightbox.open { display: flex; }
+.lb-header {
+  display: flex; align-items: center; gap: .75rem;
+  width: 100%; max-width: 960px;
+  flex-shrink: 0;
+}
+.lb-title {
+  flex: 1; font-size: .88rem; font-weight: 600; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lb-nav { display: flex; gap: .4rem; }
+.lb-btn {
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+  color: #fff; border-radius: var(--r); padding: .35rem .8rem;
+  cursor: pointer; font-size: .75rem; font-family: var(--font-mono);
+  transition: background .15s; white-space: nowrap;
+}
+.lb-btn:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+.lb-btn:disabled { opacity: .3; cursor: not-allowed; }
+.lb-body {
+  width: 100%; max-width: 960px;
+  flex: 1;
+  border-radius: var(--r);
+  overflow: hidden;
+  background: #fff;
+  position: relative;
+  min-height: 0;
+}
+.lb-body iframe,
+.lb-body img {
+  width: 100%; height: 100%;
+  border: none; object-fit: contain; display: block;
+}
+
+@media (max-width: 720px) {
+  .preview-shell { grid-template-columns: 1fr; grid-template-rows: 52px 1fr auto; }
+  .pv-sidebar { max-height: 260px; border-left: none; border-top: 1px solid var(--border); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="preview-shell">
+
+  <!-- ══ TOP BAR ══════════════════════════════════════════════════════════ -->
+  <div class="pv-topbar">
+    <div style="display:flex;align-items:center;gap:1rem;min-width:0;">
+      <span class="pv-title">Merged PDF</span>
+      <span class="pv-meta">
+        {{ files|length }} file{{ 's' if files|length != 1 }} ·
+        {% if session.layout_mode == 'one_per_page' %}{{ files|length }}{% else %}{% set pg = (files|length / 9)|round(0,'ceil')|int %}{{ [pg,1]|max }}{% endif %} page{{ 's' if files|length != 1 }} ·
+        {{ session.layout_mode|replace('_',' ')|title }}
+      </span>
+    </div>
+    <div class="pv-actions">
+      <a href="/view-pdf/{{ token }}" target="_blank" class="btn btn-ghost btn-sm">↗ New tab</a>
+      <a href="{{ download_url }}" class="btn btn-success btn-sm">↓ Download</a>
+    </div>
+  </div>
+
+  <!-- ══ VIEWER (left column) ═════════════════════════════════════════════ -->
+  <div class="pv-viewer">
+
+    <!-- Tab strip -->
+    <div class="pv-tabs">
+      <button class="pvtab active" id="tab-merged" onclick="switchTab('merged')">
+        📄 Merged PDF
+      </button>
+      <button class="pvtab" id="tab-files" onclick="switchTab('files')">
+        🖼 Source Files ({{ files|length }})
+      </button>
+    </div>
+
+    <!-- Panel wrapper -->
+    <div class="pv-panel">
+
+      <!-- ── Merged PDF panel ── -->
+      <div id="paneMerged" style="width:100%;height:100%;position:relative;display:flex;flex-direction:column;">
+        <div id="pdfSpinner">
+          <div class="spin-ring"></div>
+          <div class="spin-label">Loading PDF…</div>
+        </div>
+        <iframe
+          id="pdfIframe"
+          src="/view-pdf/{{ token }}#toolbar=1&navpanes=1&scrollbar=1&view=FitH&zoom=page-width"
+          title="Merged PDF Preview"
+          onload="onPdfLoad()"
+          onerror="onPdfError()"
+        ></iframe>
+        <div class="pdf-fallback" id="pdfFallback">
+          Your browser blocked inline PDF rendering.
+          <a href="/view-pdf/{{ token }}" target="_blank">Open in new tab</a> ·
+          <a href="{{ download_url }}">Download</a>
+        </div>
+      </div>
+
+      <!-- ── Source files panel ── -->
+      <div id="paneFiles">
+        <div class="files-grid">
+          {% for f in files %}
+          <div class="file-card"
+               onclick="openLightbox({{ loop.index0 }})">
+            <div class="file-card-thumb">
+              {% if f.filetype == 'image' %}
+                <img src="/view-file/{{ token }}/{{ f.id }}"
+                     alt="{{ f.filename }}" loading="lazy"
+                     onerror="this.src='';this.style.display='none'">
+              {% else %}
+                <div class="pdf-mini-wrap">
+                  <iframe src="/view-file/{{ token }}/{{ f.id }}#toolbar=0&navpanes=0&scrollbar=0&view=FitH&page=1"
+                          loading="lazy" tabindex="-1"></iframe>
+                </div>
+              {% endif %}
+            </div>
+            <div class="file-card-label">
+              <div class="fc-num">File {{ loop.index }}</div>
+              <div class="fc-name" title="{{ f.filename }}">{{ f.filename }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div><!-- /pv-panel -->
+  </div><!-- /pv-viewer -->
+
+  <!-- ══ SIDEBAR (right column) ═══════════════════════════════════════════ -->
+  <div class="pv-sidebar">
+    <div class="sidebar-inner">
+
+      <div class="success-pill">✓ Merge complete</div>
+
+      <div class="stat-row">
+        <div class="stat-box">
+          <span class="sv">{{ files|length }}</span>
+          <span class="sl">Files</span>
+        </div>
+        <div class="stat-box">
+          <span class="sv">
+            {% if session.layout_mode == 'one_per_page' %}
+              {{ files|length }}
+            {% else %}
+              {% set pg = (files|length / 9)|round(0,'ceil')|int %}{{ [pg,1]|max }}
+            {% endif %}
+          </span>
+          <span class="sl">Pages</span>
+        </div>
+      </div>
+
+      <div>
+        <p class="text-mono text-muted" style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.4rem;">
+          Files — click to preview
+        </p>
+        <div class="file-list">
+          {% for f in files %}
+          <div class="fl-row" onclick="openLightbox({{ loop.index0 }})">
+            <span class="fl-num">{{ loop.index }}</span>
+            <span class="fl-name" title="{{ f.filename }}">{{ f.filename }}</span>
+            <span class="fl-type {{ 'type-img' if f.filetype=='image' else 'type-pdf' }}">
+              {{ 'IMG' if f.filetype=='image' else 'PDF' }}
+            </span>
+            <span class="fl-eye">👁</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div><!-- /sidebar-inner -->
+
+    <div class="sidebar-footer">
+      <a href="{{ download_url }}" class="btn btn-success btn-full">↓ Download PDF</a>
+      <a href="/view-pdf/{{ token }}" target="_blank" class="btn btn-ghost btn-full btn-sm">↗ Open in new tab</a>
+      <a href="/" class="btn btn-ghost btn-full btn-sm">+ New Merge</a>
+    </div>
+  </div><!-- /pv-sidebar -->
+
+</div><!-- /preview-shell -->
+
+
+<!-- ══ LIGHTBOX ══════════════════════════════════════════════════════════ -->
+<div class="lightbox" id="lightbox" onclick="lbBgClick(event)">
+  <div class="lb-header">
+    <div class="lb-title" id="lbTitle">Preview</div>
+    <div class="lb-nav">
+      <button class="lb-btn" id="lbPrev" onclick="lbNav(-1)">← Prev</button>
+      <button class="lb-btn" id="lbNext" onclick="lbNav(+1)">Next →</button>
+    </div>
+    <button class="lb-btn" onclick="lbClose()">✕ Close</button>
+  </div>
+  <div class="lb-body" id="lbBody"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const FILES = [
+  {% for f in files %}
+  { id:{{ f.id }}, name:"{{ f.filename|e }}", type:"{{ f.filetype }}" }{{ "," if not loop.last }}
+  {% endfor %}
+];
+const TOKEN = "{{ token }}";
+let lbIdx = 0;
+
+/* ── Tab switching ─────────────────────────────────────────────── */
+function switchTab(tab) {
+  document.getElementById('tab-merged').classList.toggle('active', tab==='merged');
+  document.getElementById('tab-files').classList.toggle('active',  tab==='files');
+  document.getElementById('paneMerged').style.display = tab==='merged' ? 'flex' : 'none';
+  document.getElementById('paneFiles').style.display  = tab==='files'  ? 'block' : 'none';
+}
+
+/* ── PDF iframe handlers ───────────────────────────────────────── */
+function onPdfLoad() {
+  const sp = document.getElementById('pdfSpinner');
+  if (sp) { sp.classList.add('hidden'); setTimeout(()=>sp.remove(), 400); }
+}
+function onPdfError() {
+  document.getElementById('pdfSpinner')?.remove();
+  document.getElementById('pdfIframe').style.display = 'none';
+  document.getElementById('pdfFallback').style.display = 'block';
+}
+
+/* ── Lightbox ──────────────────────────────────────────────────── */
+function openLightbox(idx) {
+  lbIdx = idx;
+  renderLb();
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function renderLb() {
+  const f   = FILES[lbIdx];
+  const url = `/view-file/${TOKEN}/${f.id}`;
+  document.getElementById('lbTitle').textContent = `${lbIdx+1} / ${FILES.length} — ${f.name}`;
+  document.getElementById('lbPrev').disabled = lbIdx === 0;
+  document.getElementById('lbNext').disabled = lbIdx === FILES.length-1;
+  const body = document.getElementById('lbBody');
+  if (f.type === 'image') {
+    body.innerHTML = `<img src="${url}" alt="${f.name}" style="object-fit:contain;background:#111;">`;
+  } else {
+    body.innerHTML = `
+      <div style="position:relative;width:100%;height:100%;background:#3a3a3a;">
+        <div id="lbSpin" style="position:absolute;inset:0;display:flex;align-items:center;
+             justify-content:center;flex-direction:column;gap:.5rem;background:#3a3a3a;z-index:2;">
+          <div style="width:32px;height:32px;border:3px solid rgba(108,99,255,.25);
+               border-top-color:#6c63ff;border-radius:50%;animation:spin .75s linear infinite;"></div>
+          <span style="font-size:.68rem;font-family:monospace;color:rgba(255,255,255,.4);">Loading…</span>
+        </div>
+        <iframe src="${url}#toolbar=1&navpanes=1&view=FitH"
+          style="width:100%;height:100%;border:none;position:relative;z-index:1;"
+          onload="document.getElementById('lbSpin')?.remove()">
+        </iframe>
+      </div>`;
+  }
+}
+function lbNav(d) {
+  const n = lbIdx + d;
+  if (n < 0 || n >= FILES.length) return;
+  lbIdx = n;
+  renderLb();
+}
+function lbClose() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lbBody').innerHTML = '';
+  document.body.style.overflow = '';
+}
+function lbBgClick(e) { if (e.target===document.getElementById('lightbox')) lbClose(); }
+
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key==='Escape')      lbClose();
+  if (e.key==='ArrowLeft')   lbNav(-1);
+  if (e.key==='ArrowRight')  lbNav(+1);
+});
+</script>
+{% endblock %}

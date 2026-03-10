@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% set step = 3 %}
+{% block title %}Step 3 — Processing…{% endblock %}
+
+{% block extra_head %}
+<style>
+.processing-center{
+  max-width:500px;margin:4rem auto;text-align:center;
+}
+/* ── Animated ring ───────────────────────────────────────────────── */
+.ring-wrap{
+  width:120px;height:120px;
+  margin:0 auto 2rem;
+  position:relative;
+}
+.ring-wrap svg{width:100%;height:100%;transform:rotate(-90deg);}
+.ring-track{fill:none;stroke:var(--border);stroke-width:6;}
+.ring-fill{
+  fill:none;stroke:var(--accent);stroke-width:6;
+  stroke-linecap:round;
+  stroke-dasharray:314;
+  stroke-dashoffset:314;
+  transition:stroke-dashoffset .6s ease;
+}
+.ring-pct{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:1.3rem;font-weight:600;
+  color:var(--white);
+}
+
+/* ── Steps list ──────────────────────────────────────────────────── */
+.progress-steps{
+  list-style:none;
+  display:flex;flex-direction:column;gap:.4rem;
+  text-align:left;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:1rem 1.25rem;
+  margin:1.5rem 0;
+}
+.ps-item{
+  display:flex;align-items:center;gap:.75rem;
+  font-size:.82rem;
+  color:var(--muted);
+  transition:color .3s;
+  padding:.3rem 0;
+}
+.ps-item.active{color:var(--text);}
+.ps-item.done{color:var(--green);}
+.ps-dot{
+  width:10px;height:10px;border-radius:50%;
+  background:var(--border);flex-shrink:0;
+  transition:background .3s;
+}
+.ps-item.active .ps-dot{background:var(--accent);animation:pulse 1s infinite;}
+.ps-item.done .ps-dot{background:var(--green);}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(108,99,255,.4)}50%{box-shadow:0 0 0 6px rgba(108,99,255,0)}}
+
+.status-msg{
+  font-size:.85rem;color:var(--muted);
+  min-height:1.4em;
+  transition:opacity .3s;
+}
+.error-state{
+  background:rgba(255,101,132,.08);
+  border:1px solid rgba(255,101,132,.3);
+  border-radius:var(--r);
+  padding:1rem;
+  color:#ff8fa3;
+  font-size:.85rem;
+  display:none;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="processing-center anim">
+  <p class="eyebrow">Step 3 of 4</p>
+  <h1>Composing PDF…</h1>
+
+  <div class="ring-wrap">
+    <svg viewBox="0 0 100 100">
+      <circle class="ring-track" cx="50" cy="50" r="44"/>
+      <circle class="ring-fill" id="ringFill" cx="50" cy="50" r="44"/>
+    </svg>
+    <div class="ring-pct" id="ringPct">0%</div>
+  </div>
+
+  <p class="status-msg" id="statusMsg">Initialising…</p>
+
+  <ul class="progress-steps" id="progressSteps">
+    <li class="ps-item" id="ps-load">
+      <span class="ps-dot"></span> Loading uploaded files
+    </li>
+    <li class="ps-item" id="ps-convert">
+      <span class="ps-dot"></span> Converting PDF pages to images
+    </li>
+    <li class="ps-item" id="ps-layout">
+      <span class="ps-dot"></span> Composing A4 grid layout
+    </li>
+    <li class="ps-item" id="ps-write">
+      <span class="ps-dot"></span> Writing output PDF
+    </li>
+    <li class="ps-item" id="ps-done">
+      <span class="ps-dot"></span> Finalising
+    </li>
+  </ul>
+
+  <div class="error-state" id="errorState"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const token    = "{{ token }}";
+const ring     = document.getElementById('ringFill');
+const ringPct  = document.getElementById('ringPct');
+const statusEl = document.getElementById('statusMsg');
+
+// Map progress % → which steps are done/active
+function applyStepState(pct){
+  const map = [
+    {id:'ps-load',    from:0,  to:30},
+    {id:'ps-convert', from:30, to:55},
+    {id:'ps-layout',  from:55, to:80},
+    {id:'ps-write',   from:80, to:95},
+    {id:'ps-done',    from:95, to:100},
+  ];
+  map.forEach(({id,from,to})=>{
+    const el=document.getElementById(id);
+    if(pct>=to)       el.className='ps-item done';
+    else if(pct>=from) el.className='ps-item active';
+    else               el.className='ps-item';
+  });
+}
+
+function setProgress(pct){
+  const circumference = 2*Math.PI*44;
+  const offset = circumference*(1 - pct/100);
+  ring.style.strokeDashoffset = offset;
+  ringPct.textContent = Math.round(pct)+'%';
+  applyStepState(pct);
+}
+
+let pollInterval;
+async function poll(){
+  try{
+    const r = await fetch(`/status/${token}`);
+    const d = await r.json();
+    statusEl.textContent = d.message || '';
+    setProgress(d.progress || 0);
+
+    if(d.state==='done'){
+      clearInterval(pollInterval);
+      setProgress(100);
+      setTimeout(()=>{ window.location.href = d.redirect; }, 800);
+    } else if(d.state==='error'){
+      clearInterval(pollInterval);
+      const eb=document.getElementById('errorState');
+      eb.style.display='block';
+      eb.textContent='Error: '+d.message;
+    }
+  } catch(e){ /* network hiccup, retry */ }
+}
+
+setProgress(0);
+pollInterval = setInterval(poll, 600);
+poll();
+</script>
+{% endblock %}

@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% set step = 1 %}
+{% block title %}Step 1 — Upload Files{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Drop zone ──────────────────────────────────────────────────── */
+.upload-zone{
+  border:2px dashed var(--border);
+  border-radius:var(--r-lg);
+  background:var(--surface);
+  padding:3.5rem 2rem;
+  text-align:center;
+  cursor:pointer;
+  transition:border-color .2s,background .2s;
+  position:relative;
+}
+.upload-zone:hover,.upload-zone.drag-over{
+  border-color:var(--accent);
+  background:rgba(108,99,255,.06);
+}
+.upload-zone input[type=file]{
+  position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;
+}
+.upload-icon{
+  width:64px;height:64px;
+  background:rgba(108,99,255,.12);
+  border:1.5px solid rgba(108,99,255,.3);
+  border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.6rem;
+  margin:0 auto 1rem;
+  transition:transform .2s;
+}
+.upload-zone:hover .upload-icon{transform:scale(1.08);}
+.upload-zone h3{font-family:var(--font-serif);font-size:1.4rem;color:var(--white);margin-bottom:.4rem;}
+.upload-zone p{color:var(--muted);font-size:.85rem;}
+.format-pills{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:.4rem;margin-top:1rem;
+}
+.pill{
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:.2rem .7rem;
+  font-size:.7rem;
+  font-family:var(--font-mono);
+  color:var(--muted);
+}
+
+/* ── File queue preview ──────────────────────────────────────────── */
+#fileQueue{margin-top:1.5rem;display:none;flex-direction:column;gap:.5rem;}
+.file-item{
+  display:flex;align-items:center;gap:.75rem;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:.65rem 1rem;
+  animation:fadeUp .25s ease both;
+}
+.file-thumb{
+  width:36px;height:36px;
+  background:var(--surface);
+  border-radius:6px;
+  border:1px solid var(--border);
+  object-fit:cover;
+  flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;
+  color:var(--muted);
+  overflow:hidden;
+}
+.file-thumb img{width:100%;height:100%;object-fit:cover;}
+.file-info{flex:1;min-width:0;}
+.file-info strong{
+  display:block;
+  font-size:.82rem;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  color:var(--text);
+}
+.file-info span{font-size:.7rem;color:var(--muted);font-family:var(--font-mono);}
+.file-type-badge{
+  font-size:.62rem;font-family:var(--font-mono);font-weight:600;
+  padding:.2rem .5rem;border-radius:4px;text-transform:uppercase;
+  flex-shrink:0;
+}
+.badge-img{background:rgba(74,222,128,.15);color:var(--green);}
+.badge-pdf{background:rgba(255,101,132,.15);color:var(--accent2);}
+.file-remove{
+  background:none;border:none;cursor:pointer;
+  color:var(--muted);font-size:1rem;padding:.2rem;
+  border-radius:4px;transition:color .15s;
+  flex-shrink:0;
+}
+.file-remove:hover{color:var(--accent2);}
+
+/* ── Stats bar ───────────────────────────────────────────────────── */
+.stats-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:.75rem 1.25rem;
+  margin-bottom:1rem;
+  font-size:.8rem;
+  gap:1rem;flex-wrap:wrap;
+}
+.stat{display:flex;align-items:center;gap:.4rem;color:var(--muted);}
+.stat strong{color:var(--text);font-weight:600;}
+.stat .dot{width:8px;height:8px;border-radius:50%;}
+.dot-img{background:var(--green);}
+.dot-pdf{background:var(--accent2);}
+
+/* ── Submit row ──────────────────────────────────────────────────── */
+.submit-row{
+  display:flex;align-items:center;gap:1rem;
+  padding-top:1.25rem;
+  border-top:1px solid var(--border);
+  margin-top:1.25rem;
+  flex-wrap:wrap;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="anim">
+  <p class="eyebrow">Step 1 of 4</p>
+  <h1>Upload your files</h1>
+  <p class="subtitle">Select any number of JPG, PNG, or PDF files. You can reorder and remove them in the next step before merging.</p>
+</div>
+
+{% if errors %}
+<div class="error-box anim">{% for e in errors %}<p>⚠ {{e}}</p>{% endfor %}</div>
+{% endif %}
+
+<form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
+  <div class="card anim d1">
+
+    <div class="upload-zone" id="dropZone">
+      <input type="file" name="files" id="fileInput" multiple
+             accept=".jpg,.jpeg,.png,.pdf">
+      <div class="upload-icon">📂</div>
+      <h3>Drop files here or click to browse</h3>
+      <p>Select as many files as you need — no fixed limit</p>
+      <div class="format-pills">
+        <span class="pill">JPG</span>
+        <span class="pill">JPEG</span>
+        <span class="pill">PNG</span>
+        <span class="pill">PDF</span>
+      </div>
+    </div>
+
+    <div id="fileQueue"></div>
+
+    <div class="stats-bar" id="statsBar" style="display:none;">
+      <div class="flex gap-1" style="flex-wrap:wrap;gap:.75rem;">
+        <div class="stat">
+          Total: <strong id="statTotal">0</strong> files
+        </div>
+        <div class="stat"><span class="dot dot-img"></span><strong id="statImg">0</strong> images</div>
+        <div class="stat"><span class="dot dot-pdf"></span><strong id="statPdf">0</strong> PDFs</div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="clearAll()">Clear all</button>
+    </div>
+
+    <div class="submit-row">
+      <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+        Continue to Arrange →
+      </button>
+      <span class="text-sm text-muted" id="submitHint">Add at least one file to continue</span>
+    </div>
+
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const input    = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const queue    = document.getElementById('fileQueue');
+const statsBar = document.getElementById('statsBar');
+const submitBtn= document.getElementById('submitBtn');
+const submitHint=document.getElementById('submitHint');
+
+let fileList = [];   // {file, id}
+let nextId   = 0;
+
+// Drag & drop on zone
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()=> dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  addFiles([...e.dataTransfer.files]);
+});
+input.addEventListener('change', () => { addFiles([...input.files]); input.value=''; });
+
+function fmtSize(b){
+  if(b<1024) return b+'B';
+  if(b<1048576) return (b/1024).toFixed(1)+'KB';
+  return (b/1048576).toFixed(1)+'MB';
+}
+
+function isPdf(f){ return f.name.toLowerCase().endsWith('.pdf'); }
+
+function addFiles(files){
+  const allowed = ['jpg','jpeg','png','pdf'];
+  files.forEach(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    if(!allowed.includes(ext)) return;
+    const id = nextId++;
+    fileList.push({file:f, id});
+    renderItem({file:f, id});
+  });
+  refreshStats();
+}
+
+function renderItem({file, id}){
+  queue.style.display='flex';
+  const item = document.createElement('div');
+  item.className='file-item'; item.id=`fi-${id}`;
+
+  const thumb = document.createElement('div');
+  thumb.className='file-thumb';
+  if(!isPdf(file)){
+    const img=document.createElement('img');
+    img.src=URL.createObjectURL(file);
+    thumb.appendChild(img);
+  } else {
+    thumb.textContent='📄';
+  }
+
+  const info=document.createElement('div'); info.className='file-info';
+  info.innerHTML=`<strong title="${file.name}">${file.name}</strong>
+    <span>${fmtSize(file.size)}</span>`;
+
+  const badge=document.createElement('span');
+  badge.className='file-type-badge '+(isPdf(file)?'badge-pdf':'badge-img');
+  badge.textContent=isPdf(file)?'PDF':'IMG';
+
+  const rm=document.createElement('button');
+  rm.className='file-remove'; rm.type='button'; rm.textContent='✕';
+  rm.onclick=()=>removeItem(id);
+
+  item.append(thumb,info,badge,rm);
+  queue.appendChild(item);
+}
+
+function removeItem(id){
+  fileList=fileList.filter(x=>x.id!==id);
+  document.getElementById(`fi-${id}`)?.remove();
+  if(fileList.length===0) queue.style.display='none';
+  refreshStats();
+  rebuildInput();
+}
+
+function clearAll(){
+  fileList=[];
+  queue.innerHTML=''; queue.style.display='none';
+  refreshStats(); rebuildInput();
+}
+
+function refreshStats(){
+  const imgs=fileList.filter(x=>!isPdf(x.file)).length;
+  const pdfs=fileList.filter(x=>isPdf(x.file)).length;
+  document.getElementById('statTotal').textContent=fileList.length;
+  document.getElementById('statImg').textContent=imgs;
+  document.getElementById('statPdf').textContent=pdfs;
+  statsBar.style.display=fileList.length?'flex':'none';
+  submitBtn.disabled=fileList.length===0;
+  submitHint.textContent=fileList.length
+    ? `${fileList.length} file${fileList.length>1?'s':''} ready — click to continue`
+    : 'Add at least one file to continue';
+}
+
+function rebuildInput(){
+  // Re-attach files via DataTransfer
+  const dt=new DataTransfer();
+  fileList.forEach(({file})=>dt.items.add(file));
+  input.files=dt.files;
+}
+
+// On submit, rebuild the file input one final time
+document.getElementById('uploadForm').addEventListener('submit', e=>{
+  if(fileList.length===0){ e.preventDefault(); return; }
+  rebuildInput();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% set step = 2 %}
+{% block title %}Step 2 — Arrange Files{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Two-column layout ───────────────────────────────────────────── */
+.arrange-layout{display:grid;grid-template-columns:1fr 320px;gap:1.75rem;align-items:start;}
+@media(max-width:720px){.arrange-layout{grid-template-columns:1fr;}}
+
+/* ── Sortable list ───────────────────────────────────────────────── */
+#sortable{
+  list-style:none;
+  display:flex;flex-direction:column;gap:.5rem;
+  min-height:80px;
+}
+.sort-item{
+  display:flex;align-items:center;gap:.75rem;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:.75rem 1rem;
+  cursor:grab;
+  transition:border-color .15s,box-shadow .15s,opacity .15s;
+  user-select:none;
+  position:relative;
+}
+.sort-item:active{cursor:grabbing;}
+.sort-item.dragging{
+  opacity:.4;
+  border-color:var(--accent);
+}
+.sort-item.drag-over{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(108,99,255,.3);
+}
+.handle{
+  color:var(--muted);font-size:1.1rem;cursor:grab;
+  flex-shrink:0;padding:0 2px;
+}
+.sort-num{
+  width:26px;height:26px;
+  background:var(--accent);color:var(--white);
+  border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.72rem;font-weight:700;font-family:var(--font-mono);
+  flex-shrink:0;
+}
+.sort-thumb{
+  width:40px;height:40px;
+  border-radius:6px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  object-fit:cover;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:1.1rem;overflow:hidden;
+}
+.sort-thumb img{width:100%;height:100%;object-fit:cover;}
+.sort-info{flex:1;min-width:0;}
+.sort-info strong{
+  display:block;font-size:.82rem;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  color:var(--text);
+}
+.sort-info span{font-size:.7rem;color:var(--muted);font-family:var(--font-mono);}
+.sort-type{
+  font-size:.62rem;font-family:var(--font-mono);font-weight:600;
+  padding:.2rem .5rem;border-radius:4px;text-transform:uppercase;flex-shrink:0;
+}
+.type-img{background:rgba(74,222,128,.15);color:#4ade80;}
+.type-pdf{background:rgba(255,101,132,.15);color:#ff6584;}
+.sort-rm{
+  background:none;border:none;cursor:pointer;
+  color:var(--muted);font-size:.9rem;padding:.3rem;
+  border-radius:4px;transition:all .15s;flex-shrink:0;
+}
+.sort-rm:hover{color:#ff6584;background:rgba(255,101,132,.1);}
+
+.drag-hint{
+  text-align:center;padding:2rem;color:var(--muted);
+  font-size:.82rem;border:2px dashed var(--border);border-radius:var(--r);
+}
+
+/* ── Layout picker ───────────────────────────────────────────────── */
+.layout-options{display:flex;flex-direction:column;gap:.6rem;margin:1rem 0;}
+.layout-opt{
+  display:flex;align-items:flex-start;gap:.75rem;
+  background:var(--surface2);border:1.5px solid var(--border);
+  border-radius:var(--r);padding:.9rem 1rem;cursor:pointer;
+  transition:border-color .15s;
+}
+.layout-opt:hover{border-color:var(--accent);}
+.layout-opt input[type=radio]{
+  accent-color:var(--accent);margin-top:2px;flex-shrink:0;
+}
+.layout-opt.selected{border-color:var(--accent);background:rgba(108,99,255,.07);}
+.layout-icon{
+  font-size:1.4rem;flex-shrink:0;
+  width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+}
+.layout-text strong{display:block;font-size:.85rem;font-weight:600;color:var(--text);}
+.layout-text span{font-size:.75rem;color:var(--muted);line-height:1.4;}
+
+/* ── Grid preview diagram ────────────────────────────────────────── */
+#gridPreview{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r);padding:.75rem;
+  display:grid;gap:3px;min-height:80px;
+}
+.grid-cell{
+  background:rgba(108,99,255,.12);
+  border:1px solid rgba(108,99,255,.2);
+  border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.6rem;color:var(--accent);
+  font-family:var(--font-mono);padding:.3rem;
+  min-height:28px;
+}
+.grid-cell.empty{background:rgba(255,255,255,.03);border-color:var(--border);color:var(--muted);}
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+.sidebar{position:sticky;top:78px;display:flex;flex-direction:column;gap:1rem;}
+
+.count-badge{
+  display:inline-flex;align-items:center;gap:.4rem;
+  background:rgba(108,99,255,.15);
+  border:1px solid rgba(108,99,255,.3);
+  color:var(--accent);
+  font-size:.72rem;font-family:var(--font-mono);font-weight:600;
+  padding:.3rem .75rem;border-radius:20px;
+  margin-bottom:1rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="anim">
+  <p class="eyebrow">Step 2 of 4</p>
+  <h1>Arrange & Configure</h1>
+  <p class="subtitle">Drag files to reorder, remove any you don't need, then choose your layout.</p>
+</div>
+
+<div class="arrange-layout">
+
+  <!-- Left: sortable file list -->
+  <div class="card anim d1">
+    <div class="flex items-center justify-between" style="margin-bottom:1rem;">
+      <h2 style="margin:0;">File Order</h2>
+      <span class="count-badge">{{ files|length }} file{{ 's' if files|length != 1 }}</span>
+    </div>
+
+    {% if files %}
+    <ul id="sortable">
+      {% for f in files %}
+      <li class="sort-item" data-id="{{ f.id }}" draggable="true">
+        <span class="handle">⠿</span>
+        <span class="sort-num">{{ loop.index }}</span>
+        <div class="sort-thumb">
+          {% if f.filetype == 'image' %}
+            <img src="/media/uploads/{{ f.filepath }}"
+                 onerror="this.parentNode.textContent='🖼'">
+          {% else %}
+            📄
+          {% endif %}
+        </div>
+        <div class="sort-info">
+          <strong title="{{ f.filename }}">{{ f.filename }}</strong>
+          <span>{{ f.filetype|upper }} · slot {{ loop.index }}</span>
+        </div>
+        <span class="sort-type {{ 'type-img' if f.filetype=='image' else 'type-pdf' }}">
+          {{ 'IMG' if f.filetype=='image' else 'PDF' }}
+        </span>
+        <button class="sort-rm" title="Remove"
+                onclick="removeFile({{ f.id }}, this)">✕</button>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="drag-hint">No files — <a href="/" style="color:var(--accent)">go back to upload</a></div>
+    {% endif %}
+
+    <div class="flex gap-1 mt-2" style="flex-wrap:wrap;">
+      <a href="/" class="btn btn-ghost btn-sm">← Add more files</a>
+      <span class="text-sm text-muted" style="align-self:center;margin-left:.25rem;">
+        Drag rows to reorder
+      </span>
+    </div>
+  </div>
+
+  <!-- Right: layout config + action -->
+  <div class="sidebar anim d2">
+
+    <div class="card">
+      <h2>Layout Mode</h2>
+      <p class="text-sm text-muted" style="margin-bottom:.75rem;">How should files be placed on the A4 page(s)?</p>
+
+      <div class="layout-options">
+        <label class="layout-opt selected" id="opt-auto_grid">
+          <input type="radio" name="layout_mode_pick" value="auto_grid" checked>
+          <div class="layout-icon">⊞</div>
+          <div class="layout-text">
+            <strong>Auto Grid</strong>
+            <span>Smart 2×2, 3×3 etc. grid per page. Multiple pages if needed.</span>
+          </div>
+        </label>
+        <label class="layout-opt" id="opt-one_per_page">
+          <input type="radio" name="layout_mode_pick" value="one_per_page">
+          <div class="layout-icon">📄</div>
+          <div class="layout-text">
+            <strong>One Per Page</strong>
+            <span>Each file gets its own full A4 page. Multi-page PDF.</span>
+          </div>
+        </label>
+      </div>
+
+      <div style="margin-top:1rem;">
+        <p class="text-sm text-muted" style="margin-bottom:.5rem;">Grid preview ({{ files|length }} files)</p>
+        <div id="gridPreview"></div>
+      </div>
+    </div>
+
+    <form method="POST" action="/arrange/{{ token }}/process" id="processForm">
+      <input type="hidden" name="layout_mode" id="layout_mode_input" value="auto_grid">
+      <input type="hidden" name="order" id="order_input" value="">
+      <button type="submit" class="btn btn-primary btn-lg btn-full"
+              id="processBtn" {% if not files %}disabled{% endif %}>
+        ▶ Start Processing →
+      </button>
+    </form>
+
+    <a href="/" class="btn btn-ghost btn-full" style="text-align:center;justify-content:center;">
+      ← Back to Upload
+    </a>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const token = "{{ token }}";
+
+// ── Drag-to-reorder ──────────────────────────────────────────────
+const list = document.getElementById('sortable');
+let dragEl = null;
+
+if(list){
+  list.addEventListener('dragstart', e=>{
+    dragEl = e.target.closest('.sort-item');
+    if(dragEl) setTimeout(()=>dragEl.classList.add('dragging'),0);
+  });
+  list.addEventListener('dragend', e=>{
+    if(dragEl){ dragEl.classList.remove('dragging'); dragEl=null; }
+    syncOrder(); refreshNumbers();
+  });
+  list.addEventListener('dragover', e=>{
+    e.preventDefault();
+    const target = e.target.closest('.sort-item');
+    if(!target || target===dragEl) return;
+    target.classList.add('drag-over');
+    const r = target.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height/2;
+    list.insertBefore(dragEl, after ? target.nextSibling : target);
+  });
+  list.addEventListener('dragleave', e=>{
+    e.target.closest('.sort-item')?.classList.remove('drag-over');
+  });
+  list.addEventListener('drop', e=>{
+    e.preventDefault();
+    document.querySelectorAll('.sort-item').forEach(el=>el.classList.remove('drag-over'));
+  });
+}
+
+function refreshNumbers(){
+  document.querySelectorAll('.sort-item').forEach((el,i)=>{
+    el.querySelector('.sort-num').textContent = i+1;
+    el.querySelector('.sort-info span').textContent =
+      el.querySelector('.sort-type').textContent.trim() + ' · slot '+(i+1);
+  });
+}
+
+function syncOrder(){
+  const ids = [...document.querySelectorAll('.sort-item')].map(el=>el.dataset.id);
+  document.getElementById('order_input').value = ids.join(',');
+  // Send reorder to server in background
+  fetch(`/arrange/${token}/reorder`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({order: ids})
+  });
+  updateGridPreview();
+}
+
+// ── Remove file ───────────────────────────────────────────────────
+function removeFile(id, btn){
+  if(!confirm('Remove this file?')) return;
+  fetch(`/arrange/${token}/remove/${id}`, {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.ok){
+        btn.closest('.sort-item').remove();
+        refreshNumbers(); syncOrder();
+        const remaining = document.querySelectorAll('.sort-item').length;
+        document.getElementById('processBtn').disabled = remaining===0;
+        if(remaining===0 && list){
+          list.innerHTML='<div class="drag-hint">All files removed. <a href="/" style="color:var(--accent)">Upload new files</a></div>';
+        }
+      }
+    });
+}
+
+// ── Layout mode toggle ────────────────────────────────────────────
+document.querySelectorAll('[name=layout_mode_pick]').forEach(r=>{
+  r.addEventListener('change', ()=>{
+    document.querySelectorAll('.layout-opt').forEach(el=>el.classList.remove('selected'));
+    r.closest('.layout-opt').classList.add('selected');
+    document.getElementById('layout_mode_input').value = r.value;
+    updateGridPreview();
+  });
+});
+
+// ── Grid preview ──────────────────────────────────────────────────
+function updateGridPreview(){
+  const n = document.querySelectorAll('.sort-item').length;
+  const mode = document.querySelector('[name=layout_mode_pick]:checked')?.value || 'auto_grid';
+  const gp = document.getElementById('gridPreview');
+  if(!gp) return;
+
+  if(mode==='one_per_page'){
+    gp.style.gridTemplateColumns='1fr';
+    gp.innerHTML='';
+    for(let i=0;i<Math.min(n,4);i++){
+      const c=document.createElement('div');c.className='grid-cell';
+      c.textContent=`Page ${i+1}`;gp.appendChild(c);
+    }
+    if(n>4){
+      const m=document.createElement('div');m.className='grid-cell';
+      m.textContent=`+${n-4} more`;gp.appendChild(m);
+    }
+    return;
+  }
+
+  // auto_grid
+  const maxPP = n>9?9:n;
+  const cols  = Math.ceil(Math.sqrt(maxPP));
+  const rows  = Math.ceil(maxPP/cols);
+  gp.style.gridTemplateColumns=`repeat(${cols},1fr)`;
+  gp.innerHTML='';
+  for(let i=0;i<cols*rows;i++){
+    const c=document.createElement('div');
+    c.className='grid-cell'+(i>=n?' empty':'');
+    c.textContent=i<n?`F${i+1}`:'';
+    gp.appendChild(c);
+  }
+  if(n>9){
+    const pages=Math.ceil(n/9);
+    const note=document.createElement('p');
+    note.style.cssText='font-size:.7rem;color:var(--muted);margin-top:.4rem;font-family:var(--font-mono);grid-column:1/-1;';
+    note.textContent=`${pages} pages total`;
+    gp.appendChild(note);
+  }
+}
+
+// Init
+syncOrder(); updateGridPreview();
+
+// On submit, ensure order is saved
+document.getElementById('processForm').addEventListener('submit', ()=>{
+  syncOrder();
+});
+</script>
+{% endblock %}
